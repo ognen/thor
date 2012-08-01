@@ -160,7 +160,7 @@ class Thor
       handle_no_task_error(meth) unless task
 
       shell.say "Usage:"
-      shell.say "  #{banner(task)}"
+      shell.say "  #{banner(task, subcommand_stack)}"
       shell.say
       class_options_help(shell, nil => task.options.map { |_, o| o })
       if task.long_description
@@ -176,8 +176,8 @@ class Thor
     # ==== Parameters
     # shell<Thor::Shell>
     #
-    def help(shell, subcommand = false)
-      list = printable_tasks(true, subcommand)
+    def help(shell, subcommand_stack = nil)
+      list = printable_tasks(true, subcommand_stack)
       Thor::Util.thor_classes_in(self).each do |klass|
         list += klass.printable_tasks(false)
       end
@@ -190,11 +190,11 @@ class Thor
     end
 
     # Returns tasks ready to be printed.
-    def printable_tasks(all = true, subcommand = false)
+    def printable_tasks(all = true, subcommand_stack = nil)
       (all ? all_tasks : tasks).map do |_, task|
         next if task.hidden?
         item = []
-        item << banner(task, false, subcommand)
+        item << banner(task, false, subcommand_stack)
         item << (task.description ? "# #{task.description.gsub(/\s+/m,' ')}" : "")
         item
       end.compact
@@ -206,7 +206,7 @@ class Thor
 
     def subcommand(subcommand, subcommand_class)
       self.subcommands << subcommand.to_s
-      subcommand_class.subcommand_help subcommand
+      subcommand_class.subcommand_help((@subcommand_stack || []) + [subcommand])
 
       define_method(subcommand) do |*args|
         args, opts = Thor::Arguments.split(args)
@@ -280,8 +280,8 @@ class Thor
       # the task that is going to be invoked and a boolean which indicates if
       # the namespace should be displayed as arguments.
       #
-      def banner(task, namespace = nil, subcommand = false)
-        "#{basename} #{task.formatted_usage(self, $thor_runner, subcommand)}"
+      def banner(task, namespace = nil, subcommand_stack = nil)
+        "#{basename} #{task.formatted_usage(self, $thor_runner, subcommand_stack)}"
       end
 
       def baseclass #:nodoc:
@@ -360,10 +360,16 @@ class Thor
         end
       end
 
-      def subcommand_help(cmd)
+      attr_accessor :subcommand_stack
+      public :subcommand_stack
+
+      def subcommand_help(subcommand_stack)
+        self.subcommand_stack = subcommand_stack
         desc "help [COMMAND]", "Describe subcommands or one specific subcommand"
         class_eval <<-RUBY
-          def help(task = nil, subcommand = true); super; end
+          def help(task = nil, subcommand_stack = nil)
+            super(task, self.class.subcommand_stack)
+          end
         RUBY
       end
   end
